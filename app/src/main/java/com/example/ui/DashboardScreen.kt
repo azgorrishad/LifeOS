@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.TaskEntity
@@ -44,6 +45,8 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import com.example.data.local.entity.GoalEntity
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
 import com.example.ui.theme.AppTheme
@@ -239,39 +242,71 @@ fun HomeContent(viewModel: DashboardViewModel, tasks: List<TaskEntity>, goals: L
         contentPadding = PaddingValues(vertical = 24.dp)
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.tertiary
+                            )
+                        )
+                    )
+                    .padding(24.dp)
             ) {
                 Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "LIFEOS AI",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                            )
+                            Text(
+                                text = "Hello, $userName",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f))
+                                .clickable { onChatClicked() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = "Chat with Jarvis",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
                     Text(
-                        text = "LIFEOS AI",
+                        text = "Jarvis Briefing",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Good morning, $userName",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .border(2.dp, Color.White, RoundedCornerShape(20.dp))
-                        .clickable { onChatClicked() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AutoAwesome,
-                        contentDescription = "Chat with Jarvis",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                        text = if (aiInsight.isBlank()) "Gathering data for your briefing..." else aiInsight,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        lineHeight = 20.sp
                     )
                 }
             }
@@ -279,51 +314,75 @@ fun HomeContent(viewModel: DashboardViewModel, tasks: List<TaskEntity>, goals: L
         
         item {
             val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Ask Jarvis anything...") },
-                shape = RoundedCornerShape(16.dp),
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { 
-                            viewModel.askJarvis(searchQuery)
-                            searchQuery = ""
-                            keyboardController?.hide()
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSend = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Ask Jarvis to analyze or schedule...") },
+                    shape = RoundedCornerShape(20.dp),
+                    trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            viewModel.askJarvis(searchQuery)
-                            searchQuery = ""
-                            keyboardController?.hide()
+                            IconButton(onClick = { 
+                                viewModel.askJarvis(searchQuery)
+                                searchQuery = ""
+                                keyboardController?.hide()
+                            }) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+                                }
+                            }
                         }
-                    }
-                ),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = {
+                            if (searchQuery.isNotEmpty()) {
+                                viewModel.askJarvis(searchQuery)
+                                searchQuery = ""
+                                keyboardController?.hide()
+                            }
+                        }
+                    ),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
-        }
-
-        item {
-            GlassCard(
-                icon = Icons.Rounded.Insights,
-                title = "Jarvis AI Insight",
-                content = aiInsight,
-                iconTint = MaterialTheme.colorScheme.secondary,
-                onRefresh = { viewModel.refreshInsight() }
-            )
+                
+                // Quick suggestions
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.SuggestionChip(
+                        onClick = { viewModel.analyzeHabits("Productivity score: 85%. Tasks completed on time: 90%. Focus time: 4 hours. Struggles with late evening work.") },
+                        label = { Text("Analyze Habits") },
+                        icon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    )
+                    androidx.compose.material3.SuggestionChip(
+                        onClick = { viewModel.resolveSchedulingConflict("Meeting at 2 PM overlaps with Focus Block (1:30 PM - 3:00 PM). Deadline for Focus block task is today.") },
+                        label = { Text("Resolve Conflict") },
+                        icon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    )
+                    androidx.compose.material3.SuggestionChip(
+                        onClick = { viewModel.getBudgetSuggestion() },
+                        label = { Text("Budget Advice") },
+                        icon = { Icon(Icons.Rounded.Savings, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    )
+                }
+            }
         }
 
         item {
@@ -350,32 +409,6 @@ fun HomeContent(viewModel: DashboardViewModel, tasks: List<TaskEntity>, goals: L
 
         item {
             FinancialHealthCard(totalExpenses = totalExpenses, monthlyBudget = monthlyBudget)
-        }
-
-        item {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedButton(
-                    onClick = { viewModel.analyzeHabits("Productivity score: 85%. Tasks completed on time: 90%. Focus time: 4 hours. Struggles with late evening work.") },
-                    modifier = Modifier.weight(1f).height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Text("Analyze Habits", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                }
-                OutlinedButton(
-                    onClick = { viewModel.resolveSchedulingConflict("Meeting at 2 PM overlaps with Focus Block (1:30 PM - 3:00 PM). Deadline for Focus block task is today.") },
-                    modifier = Modifier.weight(1f).height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Text("Resolve Conflict", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                }
-            }
         }
         
         item {
