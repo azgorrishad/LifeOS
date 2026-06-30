@@ -30,10 +30,11 @@ data class Tool(
 )
 
 @Serializable
-class GoogleSearch()
+data class GoogleSearch(val ignore: String? = null)
 
 @Serializable
 data class Content(
+    val role: String? = null,
     val parts: List<Part>
 )
 
@@ -52,7 +53,13 @@ data class GenerationConfig(
     val temperature: Float? = null,
     val topP: Float? = null,
     val topK: Int? = null,
-    val responseFormat: ResponseFormat? = null
+    val responseFormat: ResponseFormat? = null,
+    val thinkingConfig: ThinkingConfig? = null
+)
+
+@Serializable
+data class ThinkingConfig(
+    val thinkingLevel: String
 )
 
 @Serializable
@@ -111,7 +118,7 @@ class GeminiRepository {
              return@withContext Result.Error(Exception("Missing API Key"), "Please configure your Gemini API Key in the AI Studio Settings.")
         }
         
-        val prompt = "Here are my current tasks:\n$tasks\n\nHere are my recent expenses:\n$expenses\n\nAs Jarvis, a highly advanced and minimal AI LifeOS assistant, give me a very brief (2-3 sentences max) insightful observation or recommendation to optimize my day."
+        val prompt = "Here are my current tasks:\n$tasks\n\nHere are my recent expenses:\n$expenses\n\nAs Jarvis, a highly advanced AI LifeOS assistant, analyze my tasks and expenses to provide natural language spending tips or budget adjustments, and a brief productivity recommendation."
         
         val request = GenerateContentRequest(
             contents = listOf(Content(parts = listOf(Part(text = prompt)))),
@@ -158,7 +165,7 @@ class GeminiRepository {
         val request = GenerateContentRequest(
             contents = listOf(Content(parts = listOf(Part(text = prompt)))),
             systemInstruction = Content(parts = listOf(Part(text = "You are an intelligent conflict resolution engine for a smart scheduling assistant."))),
-            generationConfig = GenerationConfig(temperature = 0.5f)
+            generationConfig = GenerationConfig(temperature = 0.5f, thinkingConfig = ThinkingConfig("HIGH"))
         )
 
         try {
@@ -179,16 +186,59 @@ class GeminiRepository {
         val request = GenerateContentRequest(
             contents = listOf(Content(parts = listOf(Part(text = prompt)))),
             systemInstruction = Content(parts = listOf(Part(text = "You are Jarvis, a highly advanced LifeOS assistant. Provide concise, premium answers using search data when necessary."))),
-            generationConfig = GenerationConfig(temperature = 0.5f),
+            generationConfig = GenerationConfig(temperature = 0.5f, thinkingConfig = ThinkingConfig("HIGH")),
             tools = listOf(Tool(googleSearch = GoogleSearch()))
         )
 
         try {
-            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.1-pro-preview"), apiKey, request)
             val answer = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "No answer available."
             Result.Success(answer)
         } catch (e: Exception) {
             Result.Error(e, ErrorHandler.handleError(e, "GeminiAskJarvis"))
+        }
+    }
+
+    suspend fun askJarvisChat(history: List<com.example.core.ai.ChatMessage>): Result<String> = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) return@withContext Result.Error(Exception("Missing API Key"), "Missing API Key")
+
+        val contents = history.map { Content(role = it.role, parts = listOf(Part(text = it.text))) }
+
+        val request = GenerateContentRequest(
+            contents = contents,
+            systemInstruction = Content(parts = listOf(Part(text = "You are Jarvis, a highly advanced LifeOS assistant. Provide concise, premium answers using search data when necessary."))),
+            generationConfig = GenerationConfig(temperature = 0.5f, thinkingConfig = ThinkingConfig("HIGH")),
+            tools = listOf(Tool(googleSearch = GoogleSearch()))
+        )
+
+        try {
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.1-pro-preview"), apiKey, request)
+            val answer = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "No answer available."
+            Result.Success(answer)
+        } catch (e: Exception) {
+            Result.Error(e, ErrorHandler.handleError(e, "GeminiAskJarvisChat"))
+        }
+    }
+
+    suspend fun getTaskPrioritization(tasks: List<String>): Result<String> = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) return@withContext Result.Error(Exception("Missing API Key"), "Missing API Key")
+
+        val prompt = "Here are my current tasks:\n" + tasks.joinToString("\n") + "\n\nPlease suggest which tasks I should prioritize today and why. Keep it concise and motivating."
+
+        val request = GenerateContentRequest(
+            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+            systemInstruction = Content(parts = listOf(Part(text = "You are an intelligent productivity coach."))),
+            generationConfig = GenerationConfig(temperature = 0.4f)
+        )
+
+        try {
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
+            val answer = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "No prioritization available."
+            Result.Success(answer)
+        } catch (e: Exception) {
+            Result.Error(e, ErrorHandler.handleError(e, "GeminiTaskPrioritization"))
         }
     }
 }

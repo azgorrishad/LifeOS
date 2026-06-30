@@ -4,7 +4,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 object FinanceConfig {
-    private val localeBDT = Locale("en", "BD")
+    private val localeBDT = java.util.Locale.Builder().setLanguage("en").setRegion("BD").build()
     
     fun formatCurrency(amount: Double, locale: Locale = localeBDT): String {
         val format = NumberFormat.getCurrencyInstance(locale)
