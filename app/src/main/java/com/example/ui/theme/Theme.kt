@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -210,7 +211,9 @@ enum class AppTheme(val displayName: String) {
     SLEEK_LIGHT("Sleek Light"), 
     SLEEK_DARK("Sleek Dark"), 
     MIDNIGHT_BLUE("Midnight Blue"), 
-    EMERALD_FOREST("Emerald Forest")
+    EMERALD_FOREST("Emerald Forest"),
+    CYBERPUNK("Cyberpunk"),
+    CALM_NATURE("Calm Nature")
 }
 
 @Composable
@@ -224,9 +227,11 @@ fun MyApplicationTheme(
         AppTheme.SLEEK_DARK -> true
         AppTheme.MIDNIGHT_BLUE -> true
         AppTheme.EMERALD_FOREST -> true
+        AppTheme.CYBERPUNK -> true
+        AppTheme.CALM_NATURE -> false
     }
     
-    val colorScheme = when {
+    val targetColorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -236,8 +241,40 @@ fun MyApplicationTheme(
             AppTheme.SLEEK_DARK -> SleekDarkColorScheme
             AppTheme.MIDNIGHT_BLUE -> MidnightDarkColorScheme
             AppTheme.EMERALD_FOREST -> EmeraldDarkColorScheme
+            AppTheme.CYBERPUNK -> CyberpunkDarkColorScheme
+            AppTheme.CALM_NATURE -> OceanLightColorScheme
         }
     }
+
+    val animatedPrimary by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.primary, animationSpec = androidx.compose.animation.core.tween(1000), label = "primary")
+    val animatedPrimaryContainer by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.primaryContainer, animationSpec = androidx.compose.animation.core.tween(1000), label = "primaryContainer")
+    val animatedSecondary by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.secondary, animationSpec = androidx.compose.animation.core.tween(1000), label = "secondary")
+    val animatedBackground by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.background, animationSpec = androidx.compose.animation.core.tween(1000), label = "background")
+    val animatedSurface by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.surface, animationSpec = androidx.compose.animation.core.tween(1000), label = "surface")
+    val animatedSurfaceVariant by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.surfaceVariant, animationSpec = androidx.compose.animation.core.tween(1000), label = "surfaceVariant")
+    val animatedOnPrimary by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.onPrimary, animationSpec = androidx.compose.animation.core.tween(1000), label = "onPrimary")
+    val animatedOnBackground by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.onBackground, animationSpec = androidx.compose.animation.core.tween(1000), label = "onBackground")
+    val animatedOnSurface by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.onSurface, animationSpec = androidx.compose.animation.core.tween(1000), label = "onSurface")
+    val animatedOnSurfaceVariant by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.onSurfaceVariant, animationSpec = androidx.compose.animation.core.tween(1000), label = "onSurfaceVariant")
+    val animatedOutline by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.outline, animationSpec = androidx.compose.animation.core.tween(1000), label = "outline")
+    val animatedOutlineVariant by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.outlineVariant, animationSpec = androidx.compose.animation.core.tween(1000), label = "outlineVariant")
+    val animatedError by androidx.compose.animation.animateColorAsState(targetValue = targetColorScheme.error, animationSpec = androidx.compose.animation.core.tween(1000), label = "error")
+
+    val colorScheme = targetColorScheme.copy(
+        primary = animatedPrimary,
+        primaryContainer = animatedPrimaryContainer,
+        secondary = animatedSecondary,
+        background = animatedBackground,
+        surface = animatedSurface,
+        surfaceVariant = animatedSurfaceVariant,
+        onPrimary = animatedOnPrimary,
+        onBackground = animatedOnBackground,
+        onSurface = animatedOnSurface,
+        onSurfaceVariant = animatedOnSurfaceVariant,
+        outline = animatedOutline,
+        outlineVariant = animatedOutlineVariant,
+        error = animatedError
+    )
 
     val view = LocalView.current
     if (!view.isInEditMode) {

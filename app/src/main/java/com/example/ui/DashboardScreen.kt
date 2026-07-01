@@ -28,10 +28,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.scale
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.TaskEntity
 import com.example.data.local.entity.ExpenseEntity
 import com.example.feature.dashboard.presentation.DashboardViewModel
+import com.example.feature.dashboard.presentation.SnackbarEvent
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 import androidx.compose.material.icons.rounded.Home
@@ -52,6 +56,20 @@ import androidx.compose.foundation.shape.CircleShape
 import com.example.ui.theme.AppTheme
 
 import org.koin.androidx.compose.koinViewModel
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+
+@Composable
+fun Modifier.scrollAnimation(): Modifier {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        visible = true
+    }
+    val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(500), label = "alpha")
+    val offsetY by animateFloatAsState(if (visible) 0f else 50f, tween(500), label = "offsetY")
+    return this.then(Modifier.graphicsLayer(alpha = alpha, translationY = offsetY))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,10 +97,26 @@ fun DashboardScreen(
     var showAddExpenseDialog by remember { mutableStateOf(false) }
     var showChatDialog by remember { mutableStateOf(false) }
     var currentTab by remember { mutableStateOf(0) }
+    
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    LaunchedEffect(viewModel) {
+        viewModel.snackbarEvent.collect { event ->
+            val result = snackbarHostState.showSnackbar(
+                message = event.message,
+                actionLabel = event.actionLabel,
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                event.onAction()
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             CustomBottomBar(
                 currentTab = currentTab,
@@ -103,7 +137,7 @@ fun DashboardScreen(
             when (currentTab) {
                 0 -> HomeContent(viewModel, tasks, goals, totalExpenses, aiInsight, onChatClicked = { showChatDialog = true })
                 1 -> PlanContent(tasks, goals, viewModel)
-                2 -> BankContent(totalExpenses, expenses, viewModel, aiInsight)
+                2 -> ExpensesContent(totalExpenses, expenses, viewModel, aiInsight)
                 3 -> VaultContent(currentTheme, onThemeChange, isDynamicColor, onDynamicColorChange, viewModel)
             }
         }
@@ -190,7 +224,7 @@ fun CustomBottomBar(
 
         BottomNavItem(
             icon = Icons.Rounded.AccountBalance,
-            label = "Bank",
+            label = "Expenses",
             isSelected = currentTab == 2,
             onClick = { onTabSelected(2) }
         )
@@ -228,256 +262,6 @@ fun BottomNavItem(
             fontWeight = FontWeight.Bold,
             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
-    }
-}
-
-@Composable
-fun HomeContent(viewModel: DashboardViewModel, tasks: List<TaskEntity>, goals: List<GoalEntity>, totalExpenses: Double, aiInsight: String, onChatClicked: () -> Unit) {
-    var searchQuery by remember { mutableStateOf("") }
-    val userName by viewModel.userName.collectAsStateWithLifecycle()
-    val monthlyBudget by viewModel.monthlyBudget.collectAsStateWithLifecycle()
-    
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-        contentPadding = PaddingValues(vertical = 24.dp)
-    ) {
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.tertiary
-                            )
-                        )
-                    )
-                    .padding(24.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "LIFEOS AI",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                            )
-                            Text(
-                                text = "Hello, $userName",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f))
-                                .clickable { onChatClicked() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.AutoAwesome,
-                                contentDescription = "Chat with Jarvis",
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    Text(
-                        text = "Jarvis Briefing",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (aiInsight.isBlank()) "Gathering data for your briefing..." else aiInsight,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-        }
-        
-        item {
-            val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Ask Jarvis to analyze or schedule...") },
-                    shape = RoundedCornerShape(20.dp),
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { 
-                                viewModel.askJarvis(searchQuery)
-                                searchQuery = ""
-                                keyboardController?.hide()
-                            }) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        }
-                    },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onSend = {
-                            if (searchQuery.isNotEmpty()) {
-                                viewModel.askJarvis(searchQuery)
-                                searchQuery = ""
-                                keyboardController?.hide()
-                            }
-                        }
-                    ),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
-                
-                // Quick suggestions
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    androidx.compose.material3.SuggestionChip(
-                        onClick = { viewModel.analyzeHabits("Productivity score: 85%. Tasks completed on time: 90%. Focus time: 4 hours. Struggles with late evening work.") },
-                        label = { Text("Analyze Habits") },
-                        icon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
-                    androidx.compose.material3.SuggestionChip(
-                        onClick = { viewModel.resolveSchedulingConflict("Meeting at 2 PM overlaps with Focus Block (1:30 PM - 3:00 PM). Deadline for Focus block task is today.") },
-                        label = { Text("Resolve Conflict") },
-                        icon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
-                    androidx.compose.material3.SuggestionChip(
-                        onClick = { viewModel.getBudgetSuggestion() },
-                        label = { Text("Budget Advice") },
-                        icon = { Icon(Icons.Rounded.Savings, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
-                }
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Rounded.TaskAlt,
-                    title = "Tasks",
-                    value = "${tasks.count { !it.isCompleted }} pending",
-                    iconTint = MaterialTheme.colorScheme.primary
-                )
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Rounded.Wallet,
-                    title = "Spent Today",
-                    value = com.example.utils.FinanceConfig.formatCurrency(totalExpenses),
-                    iconTint = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-
-        item {
-            FinancialHealthCard(totalExpenses = totalExpenses, monthlyBudget = monthlyBudget)
-        }
-        
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "DAILY GOALS",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        
-        if (goals.isEmpty()) {
-            item {
-                Text(
-                    text = "No daily goals.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        } else {
-            items(goals.take(3), key = { "home_goal_${it.id}" }) { goal ->
-                GoalItem(
-                    goal = goal,
-                    onToggle = { viewModel.toggleGoal(goal) },
-                    onDelete = { viewModel.deleteGoal(goal) }
-                )
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(8.dp)) }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "TODAY'S STACK",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        if (tasks.isEmpty()) {
-            item {
-                Text(
-                    text = "No tasks. You're all caught up.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        } else {
-            items(tasks.take(3), key = { it.id }) { task ->
-                TaskItem(
-                    task = task,
-                    onToggle = { viewModel.toggleTask(task) },
-                    onDelete = { viewModel.deleteTask(task) }
-                )
-            }
-        }
     }
 }
 
@@ -527,7 +311,8 @@ fun PlanContent(tasks: List<TaskEntity>, goals: List<GoalEntity>, viewModel: Das
                 GoalItem(
                     goal = goal,
                     onToggle = { viewModel.toggleGoal(goal) },
-                    onDelete = { viewModel.deleteGoal(goal) }
+                    onDelete = { viewModel.deleteGoal(goal) },
+                    modifier = Modifier.animateItem()
                 )
             }
         }
@@ -587,7 +372,8 @@ fun PlanContent(tasks: List<TaskEntity>, goals: List<GoalEntity>, viewModel: Das
                 TaskItem(
                     task = task,
                     onToggle = { viewModel.toggleTask(task) },
-                    onDelete = { viewModel.deleteTask(task) }
+                    onDelete = { viewModel.deleteTask(task) },
+                    modifier = Modifier.animateItem()
                 )
             }
         }
@@ -595,8 +381,9 @@ fun PlanContent(tasks: List<TaskEntity>, goals: List<GoalEntity>, viewModel: Das
 }
 
 @Composable
-fun BankContent(totalExpenses: Double, expenses: List<ExpenseEntity>, viewModel: DashboardViewModel, aiInsight: String) {
+fun ExpensesContent(totalExpenses: Double, expenses: List<ExpenseEntity>, viewModel: DashboardViewModel, aiInsight: String) {
     val monthlyBudget by viewModel.monthlyBudget.collectAsStateWithLifecycle()
+    val dailyBudget by viewModel.dailyBudget.collectAsStateWithLifecycle()
     var showBudgetDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -636,6 +423,17 @@ fun BankContent(totalExpenses: Double, expenses: List<ExpenseEntity>, viewModel:
                 )
                 StatCard(
                     modifier = Modifier.weight(1f),
+                    icon = Icons.Rounded.Savings,
+                    title = "Daily Budget",
+                    value = com.example.utils.FinanceConfig.formatCurrency(dailyBudget),
+                    iconTint = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                StatCard(
+                    modifier = Modifier.fillMaxWidth(),
                     icon = Icons.Rounded.Wallet,
                     title = "Total Spent",
                     value = com.example.utils.FinanceConfig.formatCurrency(totalExpenses),
@@ -705,30 +503,46 @@ fun BankContent(totalExpenses: Double, expenses: List<ExpenseEntity>, viewModel:
             items(expenses, key = { it.id }) { expense ->
                 ExpenseItem(
                     expense = expense,
-                    onDelete = { viewModel.deleteExpense(expense) }
+                    onDelete = { viewModel.deleteExpense(expense) },
+                    modifier = Modifier.animateItem()
                 )
             }
         }
     }
 
     if (showBudgetDialog) {
-        var budgetInput by remember { mutableStateOf(monthlyBudget.toString()) }
+        var monthlyBudgetInput by remember { mutableStateOf(monthlyBudget.toString()) }
+        var dailyBudgetInput by remember { mutableStateOf(dailyBudget.toString()) }
         AlertDialog(
             onDismissRequest = { showBudgetDialog = false },
-            title = { Text("Set Monthly Budget") },
+            title = { Text("Set Budgets") },
             text = {
-                OutlinedTextField(
-                    value = budgetInput,
-                    onValueChange = { budgetInput = it },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = monthlyBudgetInput,
+                        onValueChange = { monthlyBudgetInput = it },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Monthly Budget") }
+                    )
+                    OutlinedTextField(
+                        value = dailyBudgetInput,
+                        onValueChange = { dailyBudgetInput = it },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Daily Budget") }
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    budgetInput.toDoubleOrNull()?.let {
+                    monthlyBudgetInput.toDoubleOrNull()?.let {
                         viewModel.updateMonthlyBudget(it)
+                    }
+                    dailyBudgetInput.toDoubleOrNull()?.let {
+                        viewModel.updateDailyBudget(it)
                     }
                     showBudgetDialog = false
                 }) {
@@ -864,6 +678,7 @@ fun GlassCard(
 ) {
     Box(
         modifier = modifier
+            .scrollAnimation()
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -930,6 +745,89 @@ fun GlassCard(
 }
 
 @Composable
+fun TaskCompletionCard(tasks: List<TaskEntity>) {
+    val totalTasks = tasks.size
+    val completedTasks = tasks.count { it.isCompleted }
+    val completionRate = if (totalTasks > 0) {
+        (completedTasks.toFloat() / totalTasks) * 100
+    } else {
+        0f
+    }
+    
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = completionRate / 100f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "TaskProgress"
+    )
+    
+    val isLevelUp = completionRate >= 100f && totalTasks > 0
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isLevelUp) 1.05f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "LevelUpScale"
+    )
+
+    Box(
+        modifier = Modifier
+            .scrollAnimation()
+            .fillMaxWidth()
+            .scale(scale)
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, if (isLevelUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "TASK COMPLETION",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isLevelUp) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = "Level Up",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${completionRate.toInt()}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isLevelUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "$completedTasks of $totalTasks completed",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                color = if (isLevelUp) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 fun FinancialHealthCard(totalExpenses: Double, monthlyBudget: Double) {
     val healthScore = if (monthlyBudget > 0) {
         ((1.0 - (totalExpenses / monthlyBudget)) * 100).coerceIn(0.0, 100.0).toInt()
@@ -950,12 +848,30 @@ fun FinancialHealthCard(totalExpenses: Double, monthlyBudget: Double) {
         else -> "D"
     }
 
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = (healthScore / 100f).coerceIn(0f, 1f),
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "HealthProgress"
+    )
+
+    val isLevelUp = healthScore >= 80
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isLevelUp) 1.05f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "LevelUpScale"
+    )
+
     Box(
         modifier = Modifier
+            .scrollAnimation()
             .fillMaxWidth()
+            .scale(scale)
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
+            .border(1.dp, if (isLevelUp) healthColor else MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
             .padding(16.dp)
     ) {
         Row(
@@ -995,19 +911,28 @@ fun FinancialHealthCard(totalExpenses: Double, monthlyBudget: Double) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.LinearProgressIndicator(
-                    progress = { (healthScore / 100f).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
+                    progress = { animatedProgress },
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
                     color = healthColor,
                     trackColor = MaterialTheme.colorScheme.outlineVariant
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Icon(
-                imageVector = Icons.Rounded.Savings,
-                contentDescription = null,
-                tint = healthColor,
-                modifier = Modifier.size(40.dp)
-            )
+            if (isLevelUp) {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = healthColor,
+                    modifier = Modifier.size(40.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Savings,
+                    contentDescription = null,
+                    tint = healthColor,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
         }
     }
 }
@@ -1032,18 +957,22 @@ fun SpendingTrendChart(expenses: List<ExpenseEntity>) {
         }
         
         val format = java.text.SimpleDateFormat("E", java.util.Locale.getDefault())
+        val fullFormat = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault())
         (6 downTo 0).map { daysAgo ->
             val date = java.util.Calendar.getInstance().apply {
                 timeInMillis = today.timeInMillis
                 add(java.util.Calendar.DAY_OF_YEAR, -daysAgo)
             }
             val label = format.format(date.time)
-            val total = grouped[date.timeInMillis]?.sumOf { it.amount } ?: 0.0
-            label to total
+            val fullLabel = fullFormat.format(date.time)
+            val dayExpenses = grouped[date.timeInMillis] ?: emptyList()
+            val total = dayExpenses.sumOf { it.amount }
+            Triple(label, total, Pair(fullLabel, dayExpenses))
         }
     }
 
     val maxAmount = last7Days.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
     Box(
         modifier = Modifier
@@ -1061,31 +990,102 @@ fun SpendingTrendChart(expenses: List<ExpenseEntity>) {
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().height(150.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                last7Days.forEach { (label, amount) ->
-                    val heightRatio = (amount / maxAmount).toFloat()
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.fillMaxHeight()
-                    ) {
-                        Box(
+            Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    last7Days.forEachIndexed { index, (label, amount, _) ->
+                        val heightRatio = (amount / maxAmount).toFloat()
+                        val isSelected = selectedIndex == index
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom,
                             modifier = Modifier
-                                .width(24.dp)
-                                .fillMaxHeight(heightRatio.coerceAtLeast(0.05f))
-                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                                .fillMaxHeight()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onPress = {
+                                            selectedIndex = index
+                                            tryAwaitRelease()
+                                            selectedIndex = null
+                                        }
+                                    )
+                                }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .fillMaxHeight(heightRatio.coerceAtLeast(0.05f))
+                                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                    .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+                
+                // Tooltip Overlay
+                selectedIndex?.let { index ->
+                    val data = last7Days[index]
+                    val fullLabel = data.third.first
+                    val dayExpenses = data.third.second
+                    
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.9f))
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = fullLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.inverseOnSurface,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            if (dayExpenses.isEmpty()) {
+                                Text(
+                                    text = "No expenses",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f)
+                                )
+                            } else {
+                                val groupedByCategory = dayExpenses.groupBy { it.category }
+                                groupedByCategory.forEach { (category, expenses) ->
+                                    val catTotal = expenses.sumOf { it.amount }
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = category,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.9f),
+                                            modifier = Modifier.widthIn(max = 100.dp),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Text(
+                                            text = com.example.utils.FinanceConfig.formatCurrency(catTotal),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.inverseOnSurface,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1103,6 +1103,7 @@ fun StatCard(
 ) {
     Box(
         modifier = modifier
+            .scrollAnimation()
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
@@ -1144,10 +1145,12 @@ fun StatCard(
 fun GoalItem(
     goal: com.example.data.local.entity.GoalEntity,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
+            .scrollAnimation()
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(if (goal.isCompleted) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
@@ -1207,13 +1210,15 @@ fun GoalItem(
 fun TaskItem(
     task: TaskEntity,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isOverdue = !task.isCompleted && (System.currentTimeMillis() - task.timestamp > 24 * 60 * 60 * 1000)
     val isHighPriority = task.priority == 2
 
     Row(
-        modifier = Modifier
+        modifier = modifier
+            .scrollAnimation()
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(if (task.isCompleted) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.background)
@@ -1378,10 +1383,12 @@ fun AddTaskDialog(
 @Composable
 fun ExpenseItem(
     expense: ExpenseEntity,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
+            .scrollAnimation()
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surface)
@@ -1536,7 +1543,10 @@ fun ExpensePieChart(expenses: List<ExpenseEntity>) {
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier
+            .scrollAnimation()
+            .fillMaxWidth()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(modifier = Modifier.size(200.dp)) {

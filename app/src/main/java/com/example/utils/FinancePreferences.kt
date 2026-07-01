@@ -26,11 +26,27 @@ class FinancePreferences(context: Context) {
         sharedPreferences.edit().putFloat("monthly_budget", budget.toFloat()).apply()
     }
 
+    fun getDailyBudget(): Double {
+        return sharedPreferences.getFloat("daily_budget", 0f).toDouble()
+    }
+
+    fun setDailyBudget(budget: Double) {
+        sharedPreferences.edit().putFloat("daily_budget", budget.toFloat()).apply()
+    }
+
     fun getUserName(): String {
         return sharedPreferences.getString("user_name", "Alex") ?: "Alex"
     }
 
     fun setUserName(name: String) {
         sharedPreferences.edit().putString("user_name", name).apply()
+    }
+
+    fun getWidgetLayout(): String {
+        return sharedPreferences.getString("widget_layout", "welcome:2,search:2,insight:2,priority:2,stats:2,tasks:2,goals:2") ?: "welcome:2,search:2,insight:2,priority:2,stats:2,tasks:2,goals:2"
+    }
+
+    fun setWidgetLayout(layout: String) {
+        sharedPreferences.edit().putString("widget_layout", layout).apply()
     }
 }
