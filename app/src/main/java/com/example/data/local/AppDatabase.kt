@@ -13,6 +13,7 @@ import com.example.data.local.entity.HabitEntity
 import com.example.data.local.entity.GoalEntity
 import com.example.data.local.entity.ExpenseEntity
 import com.example.data.local.entity.TaskEntity
+import com.example.data.local.entity.IncomeEntity
 
 @Database(
     entities = [
@@ -22,19 +23,28 @@ import com.example.data.local.entity.TaskEntity
         NoteEntity::class,
         ProjectEntity::class,
         HabitEntity::class,
-        GoalEntity::class
+        GoalEntity::class,
+        IncomeEntity::class,
+        com.example.data.local.entity.JournalEntity::class,
+        com.example.data.local.entity.PersonEntity::class,
+        com.example.data.local.entity.DebtTransactionEntity::class,
+        com.example.data.local.entity.DebtPaymentEntity::class
     ], 
-    version = 2, 
+    version = 8, 
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun expenseDao(): ExpenseDao
+    abstract fun incomeDao(): com.example.data.local.dao.IncomeDao
     abstract fun eventDao(): com.example.data.local.dao.EventDao
     abstract fun noteDao(): com.example.data.local.dao.NoteDao
     abstract fun projectDao(): com.example.data.local.dao.ProjectDao
     abstract fun habitDao(): com.example.data.local.dao.HabitDao
     abstract fun goalDao(): com.example.data.local.dao.GoalDao
+    abstract fun journalDao(): com.example.data.local.dao.JournalDao
+    abstract fun personDao(): com.example.data.local.dao.PersonDao
+    abstract fun debtDao(): com.example.data.local.dao.DebtDao
 
     companion object {
         @Volatile

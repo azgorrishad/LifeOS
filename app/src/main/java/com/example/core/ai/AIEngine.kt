@@ -9,6 +9,6 @@ interface AIEngine {
     suspend fun resolveConflict(conflictDetails: String): Result<String>
     suspend fun analyzeHabits(productivityData: String): Result<String>
     suspend fun askJarvis(query: String): Result<String>
-    suspend fun askJarvisChat(history: List<ChatMessage>): Result<String>
+    suspend fun askJarvisChat(history: List<ChatMessage>, useThinking: Boolean = false): Result<String>
     suspend fun getTaskPrioritization(tasks: List<String>): Result<String>
 }

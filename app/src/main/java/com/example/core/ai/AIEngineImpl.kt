@@ -22,8 +22,8 @@ class AIEngineImpl(private val geminiRepository: GeminiRepository) : AIEngine {
         return geminiRepository.askJarvis(query)
     }
 
-    override suspend fun askJarvisChat(history: List<ChatMessage>): Result<String> {
-        return geminiRepository.askJarvisChat(history)
+    override suspend fun askJarvisChat(history: List<ChatMessage>, useThinking: Boolean): Result<String> {
+        return geminiRepository.askJarvisChat(history, useThinking)
     }
 
     override suspend fun getTaskPrioritization(tasks: List<String>): Result<String> {

@@ -5,13 +5,11 @@ import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
 @Serializable
-@Entity(tableName = "tasks")
-data class TaskEntity(
+@Entity(tableName = "income")
+data class IncomeEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
-    val description: String = "",
-    val isCompleted: Boolean = false,
-    val priority: Int = 0, // 0 = Low, 1 = Med, 2 = High
-    val category: String = "Personal",
+    val source: String,
+    val amount: Double,
+    val note: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )

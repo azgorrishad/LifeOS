@@ -50,10 +50,15 @@ class DashboardViewModel(
     getTotalExpensesUseCase: GetTotalExpensesUseCase,
     private val addExpenseUseCase: AddExpenseUseCase,
     private val deleteExpenseUseCase: DeleteExpenseUseCase,
+    getIncomeUseCase: GetIncomeUseCase,
+    getTotalIncomeUseCase: GetTotalIncomeUseCase,
+    private val addIncomeUseCase: AddIncomeUseCase,
+    private val deleteIncomeUseCase: DeleteIncomeUseCase,
     getEventsUseCase: GetEventsUseCase,
     private val addEventUseCase: AddEventUseCase,
     getNotesUseCase: GetNotesUseCase,
     private val addNoteUseCase: AddNoteUseCase,
+    private val deleteNoteUseCase: DeleteNoteUseCase,
     getProjectsUseCase: GetProjectsUseCase,
     private val addProjectUseCase: AddProjectUseCase,
     getHabitsUseCase: GetHabitsUseCase,
@@ -62,8 +67,10 @@ class DashboardViewModel(
     private val addGoalUseCase: AddGoalUseCase,
     private val toggleGoalCompletionUseCase: ToggleGoalCompletionUseCase,
     private val deleteGoalUseCase: DeleteGoalUseCase,
+    private val journalRepository: com.example.data.repository.JournalRepository,
     private val aiEngine: AIEngine,
-    private val financePreferences: com.example.utils.FinancePreferences
+    private val financePreferences: com.example.utils.FinancePreferences,
+    private val debtRepository: com.example.data.repository.DebtRepository
 ) : AndroidViewModel(application) {
 
     private val _monthlyBudget = MutableStateFlow(financePreferences.getMonthlyBudget())
@@ -80,6 +87,22 @@ class DashboardViewModel(
     fun updateDailyBudget(budget: Double) {
         financePreferences.setDailyBudget(budget)
         _dailyBudget.value = budget
+    }
+
+    private val _customTaskCategories = MutableStateFlow<List<String>>(financePreferences.getCustomTaskCategories())
+    val customTaskCategories: StateFlow<List<String>> = _customTaskCategories.asStateFlow()
+
+    private val _customExpenseCategories = MutableStateFlow<List<String>>(financePreferences.getCustomExpenseCategories())
+    val customExpenseCategories: StateFlow<List<String>> = _customExpenseCategories.asStateFlow()
+
+    fun addCustomTaskCategory(category: String) {
+        financePreferences.addCustomTaskCategory(category)
+        _customTaskCategories.value = financePreferences.getCustomTaskCategories()
+    }
+
+    fun addCustomExpenseCategory(category: String) {
+        financePreferences.addCustomExpenseCategory(category)
+        _customExpenseCategories.value = financePreferences.getCustomExpenseCategories()
     }
 
     private val _widgetLayout = MutableStateFlow(financePreferences.getWidgetLayout())
@@ -101,6 +124,20 @@ class DashboardViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val incomeList: StateFlow<List<com.example.data.local.entity.IncomeEntity>> = getIncomeUseCase().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val totalIncome: StateFlow<Double> = getTotalIncomeUseCase()
+        .combine(MutableStateFlow(0.0)) { total, _ -> total ?: 0.0 }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0.0
+        )
 
     val events: StateFlow<List<EventEntity>> = getEventsUseCase().stateIn(
         scope = viewModelScope,
@@ -132,6 +169,51 @@ class DashboardViewModel(
         initialValue = emptyList()
     )
 
+    val journals: StateFlow<List<com.example.data.local.entity.JournalEntity>> = journalRepository.getAllJournals().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val debts: StateFlow<List<com.example.data.local.entity.DebtTransactionEntity>> = debtRepository.getAllDebts().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val payments: StateFlow<List<com.example.data.local.entity.DebtPaymentEntity>> = debtRepository.getAllPayments().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val persons: StateFlow<List<com.example.data.local.entity.PersonEntity>> = debtRepository.getAllPersons().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    fun addJournal(title: String, content: String) {
+        viewModelScope.launch {
+            journalRepository.insertJournal(
+                com.example.data.local.entity.JournalEntity(title = title, content = content)
+            )
+        }
+    }
+    
+    fun deleteJournal(journal: com.example.data.local.entity.JournalEntity) {
+        viewModelScope.launch {
+            journalRepository.deleteJournal(journal)
+            lastDeletedJournal = journal
+            showSnackbar("Journal deleted", "Undo") {
+                lastDeletedJournal?.let {
+                    addJournal(it.title, it.content)
+                    lastDeletedJournal = null
+                }
+            }
+        }
+    }
+
     val totalExpenses: StateFlow<Double> = getTotalExpensesUseCase()
         .combine(MutableStateFlow(0.0)) { total, _ -> total ?: 0.0 }
         .stateIn(
@@ -149,13 +231,23 @@ class DashboardViewModel(
     private val _isChatLoading = MutableStateFlow(false)
     val isChatLoading: StateFlow<Boolean> = _isChatLoading.asStateFlow()
 
-    fun askJarvisChat(message: String) {
+    fun askJarvisChat(message: String, useThinking: Boolean = false) {
         val userMessage = com.example.core.ai.ChatMessage(role = "user", text = message)
         _chatHistory.value = _chatHistory.value + userMessage
         _isChatLoading.value = true
         viewModelScope.launch {
             try {
-                val response = aiEngine.askJarvisChat(_chatHistory.value)
+                // Here we will pass useThinking to get Life Data into context
+                val currentTasks = tasks.value.map { it.title }.joinToString(", ")
+                val currentExpenses = expenses.value.take(5).map { "${it.category}: ${it.amount}" }.joinToString(", ")
+                
+                val contextMessage = "User's current tasks: $currentTasks. User's recent expenses: $currentExpenses.\nUser's prompt: $message"
+                val messageWithContext = com.example.core.ai.ChatMessage(role = "user", text = contextMessage)
+                
+                // We show the actual message in UI, but send context to model
+                val historyToSend = _chatHistory.value.dropLast(1) + messageWithContext
+
+                val response = aiEngine.askJarvisChat(historyToSend, useThinking)
                 if (response is Result.Success) {
                     val modelMessage = com.example.core.ai.ChatMessage(role = "model", text = response.data)
                     _chatHistory.value = _chatHistory.value + modelMessage
@@ -176,6 +268,7 @@ class DashboardViewModel(
     val welcomeMessage: StateFlow<String> = _welcomeMessage.asStateFlow()
 
     init {
+        com.example.utils.FinanceConfig.currentCurrency = financePreferences.getCurrencyCode()
         refreshInsight()
         generateWelcomeMessage()
     }
@@ -220,6 +313,9 @@ class DashboardViewModel(
     fun toggleGoal(goal: com.example.data.local.entity.GoalEntity) {
         viewModelScope.launch {
             toggleGoalCompletionUseCase(goal)
+            if (!goal.isCompleted) {
+                triggerConfetti()
+            }
         }
     }
 
@@ -236,6 +332,15 @@ class DashboardViewModel(
         }
     }
 
+    private val _showConfetti = kotlinx.coroutines.flow.MutableSharedFlow<Boolean>()
+    val showConfetti = _showConfetti.asSharedFlow()
+
+    fun triggerConfetti() {
+        viewModelScope.launch {
+            _showConfetti.emit(true)
+        }
+    }
+
     private val _snackbarEvent = kotlinx.coroutines.flow.MutableSharedFlow<SnackbarEvent>()
     val snackbarEvent = _snackbarEvent.asSharedFlow()
 
@@ -247,12 +352,13 @@ class DashboardViewModel(
 
     private var lastDeletedTask: TaskEntity? = null
     private var lastDeletedExpense: ExpenseEntity? = null
+    private var lastDeletedIncome: com.example.data.local.entity.IncomeEntity? = null
     private var lastDeletedGoal: com.example.data.local.entity.GoalEntity? = null
+    private var lastDeletedJournal: com.example.data.local.entity.JournalEntity? = null
 
-    fun addTask(title: String, priority: Int) {
+    fun addTask(title: String, priority: Int, category: String = "Personal") {
         viewModelScope.launch {
-            addTaskUseCase(title, priority)
-            refreshInsight()
+            addTaskUseCase(title, priority, category)
             updateWidget()
             showSnackbar("Task added", "Undo") {
                 // Technically to undo an add without an ID, we'd need to delete the last one.
@@ -266,13 +372,16 @@ class DashboardViewModel(
         viewModelScope.launch {
             toggleTaskCompletionUseCase(task)
             updateWidget()
+            
+            if (!task.isCompleted && tasks.value.count { !it.isCompleted } == 1) {
+                triggerConfetti()
+            }
         }
     }
 
     fun addExpense(amount: Double, category: String, note: String) {
         viewModelScope.launch {
             addExpenseUseCase(amount, category, note)
-            refreshInsight()
             updateWidget()
             showSnackbar("Expense added")
             
@@ -306,7 +415,7 @@ class DashboardViewModel(
             updateWidget()
             showSnackbar("Task deleted", "Undo") {
                 lastDeletedTask?.let {
-                    addTask(it.title, it.priority)
+                    addTask(it.title, it.priority, it.category)
                     lastDeletedTask = null
                 }
             }
@@ -322,6 +431,28 @@ class DashboardViewModel(
                 lastDeletedExpense?.let {
                     addExpense(it.amount, it.category, it.note)
                     lastDeletedExpense = null
+                }
+            }
+        }
+    }
+
+    fun addIncome(amount: Double, source: String, note: String) {
+        viewModelScope.launch {
+            addIncomeUseCase(amount, source, note)
+            updateWidget()
+            showSnackbar("Income added")
+        }
+    }
+    
+    fun deleteIncome(income: com.example.data.local.entity.IncomeEntity) {
+        viewModelScope.launch {
+            deleteIncomeUseCase(income.id)
+            lastDeletedIncome = income
+            updateWidget()
+            showSnackbar("Income deleted", "Undo") {
+                lastDeletedIncome?.let {
+                    addIncome(it.amount, it.source, it.note)
+                    lastDeletedIncome = null
                 }
             }
         }
@@ -368,14 +499,78 @@ class DashboardViewModel(
         }
     }
 
+    private val _spendingForecast = MutableStateFlow<Result<String>>(Result.Loading)
+    val spendingForecast: StateFlow<Result<String>> = _spendingForecast.asStateFlow()
+
+    fun getSpendingForecast() {
+        viewModelScope.launch {
+            _spendingForecast.value = Result.Loading
+            val budget = monthlyBudget.value
+            val spent = totalExpenses.value
+            val today = java.util.Calendar.getInstance()
+            val daysInMonth = today.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+            val currentDay = today.get(java.util.Calendar.DAY_OF_MONTH)
+            val remainingDays = daysInMonth - currentDay
+
+            val expenseList = expenses.value.take(10).map { "${it.category}: ${it.amount}" }.joinToString(", ")
+            val prompt = "Based on the recent expenses ($expenseList), my total spent is ${com.example.utils.FinanceConfig.formatCurrency(spent)} out of a monthly budget of ${com.example.utils.FinanceConfig.formatCurrency(budget)}. There are $remainingDays days left in the month. Please analyze my spending patterns and accurately forecast my remaining balance at the end of the month. Provide a concise response with the forecasted remaining balance and a brief explanation."
+            
+            _spendingForecast.value = aiEngine.askJarvis(prompt)
+        }
+    }
+
+    private val _weeklySummary = MutableStateFlow<Result<String>>(Result.Loading)
+    val weeklySummary: StateFlow<Result<String>> = _weeklySummary.asStateFlow()
+
+    init {
+        getWeeklySummary()
+        viewModelScope.launch {
+            debtRepository.writeEvents.collect {
+                // Trigger asynchronous background task to refresh dashboard insights/summaries
+                getWeeklySummary()
+                getBudgetSuggestion()
+            }
+        }
+    }
+
+    fun getWeeklySummary() {
+        viewModelScope.launch {
+            _weeklySummary.value = Result.Loading
+            val taskSummary = com.example.utils.DataSummarizer.summarizeTasks(tasks.value)
+            val expenseSummary = com.example.utils.DataSummarizer.summarizeExpenses(expenses.value)
+            val debtSummary = com.example.utils.DataSummarizer.summarizeDebts(debts.value, payments.value, persons.value)
+            
+            val prompt = """
+                As LifeOS AI, my advanced AI assistant, please analyze my current life telemetry and generate a highly personalized, concise, high-value weekly summary and actionable advice.
+                
+                Telemetry Summary:
+                - $taskSummary
+                - $expenseSummary
+                - $debtSummary
+                
+                Please provide a clean, structures, and motivating response with bullet points and clear, specific directives.
+            """.trimIndent()
+            _weeklySummary.value = aiEngine.askJarvis(prompt)
+        }
+    }
+
     fun getBudgetSuggestion() {
         viewModelScope.launch {
             _aiInsight.value = Result.Loading
             val budget = monthlyBudget.value
             val spent = totalExpenses.value
-            val expenseList = expenses.value.take(10).map { "${it.category}: ${it.amount}" }.joinToString(", ")
-            val taskList = tasks.value.map { it.title }.joinToString(", ")
-            val prompt = "My monthly budget is ${com.example.utils.FinanceConfig.formatCurrency(budget)} and I have spent ${com.example.utils.FinanceConfig.formatCurrency(spent)}. My recent expenses: $expenseList. My current tasks: $taskList. Please analyze my expenses and tasks to provide natural language spending tips and budget adjustments."
+            val expenseSummary = com.example.utils.DataSummarizer.summarizeExpenses(expenses.value)
+            val debtSummary = com.example.utils.DataSummarizer.summarizeDebts(debts.value, payments.value, persons.value)
+            
+            val prompt = """
+                My monthly budget limit is ${com.example.utils.FinanceConfig.formatCurrency(budget)} and I have spent a total of ${com.example.utils.FinanceConfig.formatCurrency(spent)}.
+                
+                Details:
+                - $expenseSummary
+                - $debtSummary
+                
+                Analyze my current financial posture and recommend practical budget adjustments, cost savings, and tactical spending suggestions. Keep the suggestions highly realistic, actionable, and structured.
+            """.trimIndent()
             _aiInsight.value = aiEngine.askJarvis(prompt)
         }
     }
@@ -388,18 +583,61 @@ class DashboardViewModel(
         _userName.value = name
     }
 
+    private val _currencyCode = MutableStateFlow(financePreferences.getCurrencyCode())
+    val currencyCode: StateFlow<String> = _currencyCode.asStateFlow()
+
+    fun updateCurrencyCode(code: String) {
+        financePreferences.setCurrencyCode(code)
+        _currencyCode.value = code
+        com.example.utils.FinanceConfig.currentCurrency = code
+    }
+
     private val _taskPrioritization = MutableStateFlow<Result<String>>(Result.Loading)
     val taskPrioritization: StateFlow<Result<String>> = _taskPrioritization.asStateFlow()
 
     fun getTaskPrioritization() {
         viewModelScope.launch {
             _taskPrioritization.value = Result.Loading
-            val currentTasks = tasks.value.map { it.title }
-            if (currentTasks.isEmpty()) {
-                _taskPrioritization.value = Result.Success("No tasks to prioritize!")
+            val pendingTasks = tasks.value.filter { !it.isCompleted }
+                .sortedByDescending { it.priority }
+                .take(10)
+            
+            if (pendingTasks.isEmpty()) {
+                _taskPrioritization.value = Result.Success("You have no pending tasks to prioritize today! Great job!")
                 return@launch
             }
-            _taskPrioritization.value = aiEngine.getTaskPrioritization(currentTasks)
+            
+            val taskListStrings = pendingTasks.map { 
+                "${it.title} (Priority: ${it.priority}, Category: ${it.category})"
+            }
+            _taskPrioritization.value = aiEngine.getTaskPrioritization(taskListStrings)
+        }
+    }
+
+    fun addNote(title: String, content: String) {
+        viewModelScope.launch {
+            val note = NoteEntity(
+                title = title,
+                content = content,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            addNoteUseCase(note)
+            showSnackbar("Note added successfully")
+        }
+    }
+
+    fun updateNote(note: NoteEntity) {
+        viewModelScope.launch {
+            addNoteUseCase(note.copy(updatedAt = System.currentTimeMillis()))
+            showSnackbar("Note updated successfully")
+        }
+    }
+
+    fun deleteNote(id: String) {
+        viewModelScope.launch {
+            deleteNoteUseCase(id)
+            showSnackbar("Note deleted successfully")
         }
     }
 }
