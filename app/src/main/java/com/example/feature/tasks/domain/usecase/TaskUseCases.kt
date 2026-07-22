@@ -9,8 +9,8 @@ class GetTasksUseCase(private val repository: TaskRepository) {
 }
 
 class AddTaskUseCase(private val repository: TaskRepository) {
-    suspend operator fun invoke(title: String, priority: Int, category: String = "Personal") {
-        repository.insertTask(TaskEntity(title = title, priority = priority, category = category))
+    suspend operator fun invoke(title: String, priority: Int, category: String = "Personal", dueDate: Long? = null) {
+        repository.insertTask(TaskEntity(title = title, priority = priority, category = category, dueDate = dueDate))
     }
 }
 

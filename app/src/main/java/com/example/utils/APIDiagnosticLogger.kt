@@ -17,7 +17,8 @@ data class DiagnosticLog(
     val errorMessage: String?,
     val durationMs: Long,
     val payloadStructure: String? = null,
-    val apiResponseErrors: String? = null
+    val apiResponseErrors: String? = null,
+    val tag: String = "Personal"
 ) {
     val formattedTime: String
         get() = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(timestamp))
@@ -26,6 +27,8 @@ data class DiagnosticLog(
 object APIDiagnosticLogger {
     private val _logs = MutableStateFlow<List<DiagnosticLog>>(emptyList())
     val logs: StateFlow<List<DiagnosticLog>> = _logs.asStateFlow()
+
+    var activeTag: String = "Personal"
 
     @Synchronized
     fun logCall(
@@ -36,7 +39,8 @@ object APIDiagnosticLogger {
         errorMessage: String?,
         durationMs: Long,
         payloadStructure: String? = null,
-        apiResponseErrors: String? = null
+        apiResponseErrors: String? = null,
+        tag: String = activeTag
     ) {
         val newLog = DiagnosticLog(
             feature = feature,
@@ -46,7 +50,8 @@ object APIDiagnosticLogger {
             errorMessage = errorMessage,
             durationMs = durationMs,
             payloadStructure = payloadStructure,
-            apiResponseErrors = apiResponseErrors
+            apiResponseErrors = apiResponseErrors,
+            tag = tag
         )
         val currentList = _logs.value.toMutableList()
         currentList.add(0, newLog) // Add to top of list

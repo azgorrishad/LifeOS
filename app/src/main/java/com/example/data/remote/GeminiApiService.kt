@@ -105,13 +105,13 @@ object RetrofitClient {
 }
 
 class GeminiRepository {
-    private fun getModelUrl(modelName: String = "gemini-1.5-flash"): String {
+    private fun getModelUrl(modelName: String = "gemini-3.5-flash"): String {
         return "v1beta/models/$modelName:generateContent"
     }
 
     suspend fun getLifeInsights(tasks: String, expenses: String): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        val requestPayload = "GenerateContentRequest(model=gemini-1.5-flash, temperature=0.7f, systemInstruction='Provide concise, high-value productivity and financial insights.')"
+        val requestPayload = "GenerateContentRequest(model=gemini-3.5-flash, temperature=0.7f, systemInstruction='Provide concise, high-value productivity and financial insights.')"
         
         if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) {
              val fallback = com.example.core.ai.LocalAIHeuristicsEngine.generateLifeInsightsFallback(tasks, expenses)
@@ -138,7 +138,7 @@ class GeminiRepository {
          
          val startTime = System.currentTimeMillis()
          try {
-             val response = RetrofitClient.service.generateContent(getModelUrl("gemini-1.5-flash"), apiKey, request)
+             val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
             val duration = System.currentTimeMillis() - startTime
             val rawInsight = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
             val insight = if (rawInsight.isNullOrBlank()) {
@@ -187,7 +187,7 @@ class GeminiRepository {
 
     suspend fun analyzeHabits(productivityData: String): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        val requestPayload = "GenerateContentRequest(model=gemini-1.5-flash, temperature=0.7f, systemInstruction='You are an expert productivity coach...')"
+        val requestPayload = "GenerateContentRequest(model=gemini-3.5-flash, temperature=0.7f, systemInstruction='You are an expert productivity coach...')"
         
         if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) {
             val fallback = "### 🧠 Habit Analytics & Recommendations\n\n" +
@@ -217,7 +217,7 @@ class GeminiRepository {
 
         val startTime = System.currentTimeMillis()
         try {
-            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-1.5-flash"), apiKey, request)
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
             val duration = System.currentTimeMillis() - startTime
             val habits = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "Could not analyze habits."
             com.example.utils.APIDiagnosticLogger.logCall(
@@ -253,7 +253,7 @@ class GeminiRepository {
 
     suspend fun resolveSchedulingConflict(conflictDetails: String): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        val requestPayload = "GenerateContentRequest(model=gemini-1.5-flash, temperature=0.5f, systemInstruction='You are an intelligent conflict resolution engine...')"
+        val requestPayload = "GenerateContentRequest(model=gemini-3.5-flash, temperature=0.5f, systemInstruction='You are an intelligent conflict resolution engine...')"
         
         if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) {
             val fallback = "### 🛡️ Scheduling Conflict Resolution\n\n" +
@@ -282,7 +282,7 @@ class GeminiRepository {
 
         val startTime = System.currentTimeMillis()
         try {
-            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-1.5-flash"), apiKey, request)
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
             val duration = System.currentTimeMillis() - startTime
             val resolution = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "Could not resolve conflict."
             com.example.utils.APIDiagnosticLogger.logCall(
@@ -317,7 +317,7 @@ class GeminiRepository {
 
     suspend fun askJarvis(query: String): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        val requestPayload = "GenerateContentRequest(model=gemini-1.5-flash, temperature=0.5f, query='$query')"
+        val requestPayload = "GenerateContentRequest(model=gemini-3.5-flash, temperature=0.5f, query='$query')"
         
         if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) {
             val fallback = com.example.core.ai.LocalAIHeuristicsEngine.generateChatFallback(query)
@@ -345,7 +345,7 @@ class GeminiRepository {
 
         val startTime = System.currentTimeMillis()
         try {
-            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-1.5-flash"), apiKey, request)
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
             val duration = System.currentTimeMillis() - startTime
             val rawAnswer = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
             val answer = if (rawAnswer.isNullOrBlank()) {
@@ -394,7 +394,7 @@ class GeminiRepository {
 
     suspend fun askJarvisChat(history: List<com.example.core.ai.ChatMessage>, useThinking: Boolean = false): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        val model = if (useThinking) "gemini-1.5-pro" else "gemini-1.5-flash"
+        val model = if (useThinking) "gemini-3.1-pro-preview" else "gemini-3.5-flash"
         val requestPayload = "GenerateContentRequest(model=$model, useThinking=$useThinking, temperature=0.5f)"
         val lastMessage = history.lastOrNull()?.text ?: ""
         
@@ -478,7 +478,7 @@ class GeminiRepository {
 
     suspend fun getTaskPrioritization(tasks: List<String>): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        val requestPayload = "GenerateContentRequest(model=gemini-1.5-flash, temperature=0.4f, tasksCount=${tasks.size})"
+        val requestPayload = "GenerateContentRequest(model=gemini-3.5-flash, temperature=0.4f, tasksCount=${tasks.size})"
         
         if (apiKey.isEmpty() || apiKey.startsWith("MY_GEMINI")) {
             val fallback = "### 🎯 Task Prioritization & Strategy\n\n" +
@@ -508,7 +508,7 @@ class GeminiRepository {
 
         val startTime = System.currentTimeMillis()
         try {
-            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-1.5-flash"), apiKey, request)
+            val response = RetrofitClient.service.generateContent(getModelUrl("gemini-3.5-flash"), apiKey, request)
             val duration = System.currentTimeMillis() - startTime
             val answer = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: "No prioritization available."
             com.example.utils.APIDiagnosticLogger.logCall(

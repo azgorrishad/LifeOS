@@ -13,6 +13,7 @@ import com.example.feature.finance.domain.usecase.*
 import com.example.feature.tasks.domain.usecase.*
 import com.example.utils.Result
 import com.example.widget.SummaryWidgetProvider
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,7 +71,8 @@ class DashboardViewModel(
     private val journalRepository: com.example.data.repository.JournalRepository,
     private val aiEngine: AIEngine,
     private val financePreferences: com.example.utils.FinancePreferences,
-    private val debtRepository: com.example.data.repository.DebtRepository
+    private val debtRepository: com.example.data.repository.DebtRepository,
+    private val stateProvider: com.example.core.ai.GemmaLocalStateProvider
 ) : AndroidViewModel(application) {
 
     private val _monthlyBudget = MutableStateFlow(financePreferences.getMonthlyBudget())
@@ -225,39 +227,36 @@ class DashboardViewModel(
     private val _aiInsight = MutableStateFlow<Result<String>>(Result.Loading)
     val aiInsight: StateFlow<Result<String>> = _aiInsight
 
-    private val _chatHistory = MutableStateFlow<List<com.example.core.ai.ChatMessage>>(emptyList())
-    val chatHistory: StateFlow<List<com.example.core.ai.ChatMessage>> = _chatHistory.asStateFlow()
+    val chatHistory: StateFlow<List<com.example.core.ai.ChatMessage>> = stateProvider.chatHistory
+        .map { list -> list.map { it.toChatMessage() } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     private val _isChatLoading = MutableStateFlow(false)
     val isChatLoading: StateFlow<Boolean> = _isChatLoading.asStateFlow()
 
     fun askJarvisChat(message: String, useThinking: Boolean = false) {
-        val userMessage = com.example.core.ai.ChatMessage(role = "user", text = message)
-        _chatHistory.value = _chatHistory.value + userMessage
+        if (message.isBlank()) return
         _isChatLoading.value = true
         viewModelScope.launch {
             try {
-                // Here we will pass useThinking to get Life Data into context
-                val currentTasks = tasks.value.map { it.title }.joinToString(", ")
-                val currentExpenses = expenses.value.take(5).map { "${it.category}: ${it.amount}" }.joinToString(", ")
+                // Map current history from stateProvider to ChatMessage list
+                val currentHistory = stateProvider.chatHistory.value.map { it.toChatMessage() }
                 
-                val contextMessage = "User's current tasks: $currentTasks. User's recent expenses: $currentExpenses.\nUser's prompt: $message"
-                val messageWithContext = com.example.core.ai.ChatMessage(role = "user", text = contextMessage)
+                // Append the clean user message to history
+                val cleanUserMessage = com.example.core.ai.ChatMessage(role = "user", text = message)
+                val historyToSend = currentHistory + cleanUserMessage
                 
-                // We show the actual message in UI, but send context to model
-                val historyToSend = _chatHistory.value.dropLast(1) + messageWithContext
-
+                // Ask the AI Engine (which internally saves both user query & assistant response to stateProvider)
                 val response = aiEngine.askJarvisChat(historyToSend, useThinking)
-                if (response is Result.Success) {
-                    val modelMessage = com.example.core.ai.ChatMessage(role = "model", text = response.data)
-                    _chatHistory.value = _chatHistory.value + modelMessage
-                } else if (response is Result.Error) {
-                    val errorMessage = com.example.core.ai.ChatMessage(role = "model", text = "Error: ${response.message}")
-                    _chatHistory.value = _chatHistory.value + errorMessage
+                if (response is Result.Error) {
+                    stateProvider.saveMessage("model", "Error: ${response.message}")
                 }
             } catch (e: Exception) {
-                val errorMessage = com.example.core.ai.ChatMessage(role = "model", text = "Error: Something went wrong. Please try again later.")
-                _chatHistory.value = _chatHistory.value + errorMessage
+                stateProvider.saveMessage("model", "Error: Something went wrong. Please try again later.")
             } finally {
                 _isChatLoading.value = false
             }
@@ -356,9 +355,9 @@ class DashboardViewModel(
     private var lastDeletedGoal: com.example.data.local.entity.GoalEntity? = null
     private var lastDeletedJournal: com.example.data.local.entity.JournalEntity? = null
 
-    fun addTask(title: String, priority: Int, category: String = "Personal") {
+    fun addTask(title: String, priority: Int, category: String = "Personal", dueDate: Long? = null) {
         viewModelScope.launch {
-            addTaskUseCase(title, priority, category)
+            addTaskUseCase(title, priority, category, dueDate)
             updateWidget()
             showSnackbar("Task added", "Undo") {
                 // Technically to undo an add without an ID, we'd need to delete the last one.

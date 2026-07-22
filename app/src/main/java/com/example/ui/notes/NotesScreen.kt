@@ -259,7 +259,7 @@ fun NotesDialog(
                                 items(filteredNotes, key = { it.id }) { note ->
                                     Card(
                                         onClick = { selectedNote = note },
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier.fillMaxWidth().animateItem(),
                                         colors = CardDefaults.cardColors(
                                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                                         ),
@@ -652,6 +652,7 @@ fun NotesWidget(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize()
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
             .padding(16.dp)

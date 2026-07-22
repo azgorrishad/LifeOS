@@ -69,10 +69,8 @@ class Gemma4LocalEngine(
                     return result
                 } else if (result is Result.Error) {
                     val errorMsg = result.message ?: ""
-                    val isTimeout = result.exception is TimeoutException || errorMsg.contains("timeout", ignoreCase = true)
-                    val isInitFailure = result.exception is IllegalStateException || errorMsg.contains("initialize", ignoreCase = true)
                     
-                    if ((isTimeout || isInitFailure) && attempt < maxAttempts) {
+                    if (attempt < maxAttempts) {
                         APIDiagnosticLogger.logCall(
                             feature = featureName,
                             requestSummary = "Auto-retry system: Exception caught on attempt ${attempt}",

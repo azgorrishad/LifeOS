@@ -13,7 +13,8 @@ import androidx.room.PrimaryKey
             childColumns = ["debtId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index("debtId")]
 )
 data class DebtPaymentEntity(
     @PrimaryKey(autoGenerate = true)

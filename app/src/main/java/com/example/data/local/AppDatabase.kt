@@ -30,7 +30,7 @@ import com.example.data.local.entity.IncomeEntity
         com.example.data.local.entity.DebtTransactionEntity::class,
         com.example.data.local.entity.DebtPaymentEntity::class
     ], 
-    version = 8, 
+    version = 10, 
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

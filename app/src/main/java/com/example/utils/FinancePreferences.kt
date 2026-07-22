@@ -51,11 +51,12 @@ class FinancePreferences(context: Context) {
     }
 
     fun getWidgetLayout(): String {
-        var layout = sharedPreferences.getString("widget_layout", "welcome:2,jarvis_insights:2,summary:2,chat:2,tasks:1,journals:1,forecast:2,stats:2,goals:2,notes:2") ?: "welcome:2,jarvis_insights:2,summary:2,chat:2,tasks:1,journals:1,forecast:2,stats:2,goals:2,notes:2"
+        var layout = sharedPreferences.getString("widget_layout", "welcome:2,jarvis_insights:2,analytics_chart:2,summary:2,chat:2,tasks:1,journals:1,forecast:2,stats:2,goals:2,notes:2") ?: "welcome:2,jarvis_insights:2,analytics_chart:2,summary:2,chat:2,tasks:1,journals:1,forecast:2,stats:2,goals:2,notes:2"
         if (!layout.contains("summary")) layout = "summary:2,$layout"
         if (!layout.contains("debt")) layout = "$layout,debt:2"
         if (!layout.contains("jarvis_insights")) layout = "jarvis_insights:2,$layout"
         if (!layout.contains("notes")) layout = "$layout,notes:2"
+        if (!layout.contains("analytics_chart")) layout = "analytics_chart:2,$layout"
         return layout
     }
 

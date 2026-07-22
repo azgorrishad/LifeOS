@@ -15,7 +15,8 @@ enum class DebtType {
         ForeignKey(
             entity = PersonEntity::class, parentColumns = ["id"], childColumns = ["personId"], onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index("personId")]
 )
 data class DebtTransactionEntity(
     @PrimaryKey(autoGenerate = true)

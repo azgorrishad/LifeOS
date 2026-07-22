@@ -61,7 +61,10 @@ import com.example.ui.theme.AppTheme
 
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 
@@ -76,7 +79,7 @@ fun Modifier.scrollAnimation(): Modifier {
     return this.then(Modifier.graphicsLayer(alpha = alpha, translationY = offsetY))
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = koinViewModel(),
@@ -154,50 +157,66 @@ fun DashboardScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 24.dp)
-        ) {
-            if (isAwaitingResponse) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            Crossfade(
-                targetState = currentTab,
-                animationSpec = tween(durationMillis = 300),
-                label = "tab_crossfade"
-            ) { tab ->
-                when (tab) {
-                    0 -> HomeContent(
-                        viewModel = viewModel,
-                        tasks = tasks,
-                        goals = goals,
-                        journals = journals,
-                        totalExpenses = totalExpenses,
-                        aiInsight = aiInsight,
-                        onChatClicked = { showChatDialog = true },
-                        onNavigateToTab = { currentTab = it },
-                        onViewNotes = { showNotesDialog = true },
-                        onAddNote = { showCreateNoteDialog = true }
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp)
+            ) {
+                if (isAwaitingResponse) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
                     )
-                    1 -> PlanContent(tasks, goals, viewModel)
-                    2 -> ExpensesContent(totalExpenses, expenses, viewModel.incomeList.collectAsStateWithLifecycle().value, viewModel, aiInsight, onAddIncome = { showAddIncomeDialog = true })
-                    3 -> com.example.ui.debt.DebtScreen(
-                        showAddDebtInitially = triggerAddDebt,
-                        onAddDebtConsumed = { triggerAddDebt = false }
-                    )
-                    4 -> VaultContent(currentTheme, onThemeChange, isDynamicColor, onDynamicColorChange, viewModel, onViewDiagnostics = { showDiagnosticsDialog = true })
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                androidx.compose.animation.AnimatedContent(
+                    targetState = currentTab,
+                    transitionSpec = {
+                        if (targetState > initialState) {
+                            (androidx.compose.animation.slideInHorizontally { width -> width } + androidx.compose.animation.fadeIn()) togetherWith (
+                                androidx.compose.animation.slideOutHorizontally { width -> -width } + androidx.compose.animation.fadeOut()
+                            )
+                        } else {
+                            (androidx.compose.animation.slideInHorizontally { width -> -width } + androidx.compose.animation.fadeIn()) togetherWith (
+                                androidx.compose.animation.slideOutHorizontally { width -> width } + androidx.compose.animation.fadeOut()
+                            )
+                        }.using(
+                            androidx.compose.animation.SizeTransform(clip = false)
+                        )
+                    },
+                    label = "tab_animated_content"
+                ) { tab ->
+                    when (tab) {
+                        0 -> HomeContent(
+                            viewModel = viewModel,
+                            tasks = tasks,
+                            goals = goals,
+                            journals = journals,
+                            totalExpenses = totalExpenses,
+                            aiInsight = aiInsight,
+                            onChatClicked = { showChatDialog = true },
+                            onNavigateToTab = { currentTab = it },
+                            onViewNotes = { showNotesDialog = true },
+                            onAddNote = { showCreateNoteDialog = true }
+                        )
+                        1 -> PlanContent(tasks, goals, viewModel)
+                        2 -> ExpensesContent(totalExpenses, expenses, viewModel.incomeList.collectAsStateWithLifecycle().value, viewModel, aiInsight, onAddIncome = { showAddIncomeDialog = true })
+                        3 -> com.example.ui.debt.DebtScreen(
+                            showAddDebtInitially = triggerAddDebt,
+                            onAddDebtConsumed = { triggerAddDebt = false }
+                        )
+                        4 -> VaultContent(currentTheme, onThemeChange, isDynamicColor, onDynamicColorChange, viewModel, onViewDiagnostics = { showDiagnosticsDialog = true })
+                    }
                 }
             }
+            
+            // Persistent Quick Notes Widget
+            QuickNotesOverlay()
         }
     }
 
@@ -247,8 +266,8 @@ fun DashboardScreen(
             customCategories = customTaskCats,
             onAddCustomCategory = { cat -> viewModel.addCustomTaskCategory(cat) },
             onDismiss = { showAddTaskDialog = false },
-            onAdd = { title, priority, category ->
-                viewModel.addTask(title, priority, category)
+            onAdd = { title, priority, category, dueDate ->
+                viewModel.addTask(title, priority, category, dueDate)
                 showAddTaskDialog = false
             }
         )
@@ -389,23 +408,29 @@ fun BottomNavItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val tintColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        label = "tint_color"
+    )
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable(onClick = onClick)
             .padding(8.dp)
+            .animateContentSize()
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            tint = tintColor,
             modifier = Modifier.size(24.dp)
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            color = tintColor
         )
     }
 }
@@ -1556,26 +1581,19 @@ fun GlassCard(
                     }
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(
-                    onClick = { onRefresh?.invoke() },
-                    modifier = Modifier.weight(1f).height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            if (onRefresh != null) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Optimize Now", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                }
-                OutlinedButton(
-                    onClick = { /* TODO */ },
-                    modifier = Modifier.weight(1f).height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.6f))
-                ) {
-                    Text("Review Changes", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Button(
+                        onClick = { onRefresh.invoke() },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Refresh AI Insights", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
@@ -2051,7 +2069,11 @@ fun TaskItem(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isOverdue = !task.isCompleted && (System.currentTimeMillis() - task.timestamp > 24 * 60 * 60 * 1000)
+    val isOverdue = !task.isCompleted && (
+        (task.dueDate != null && System.currentTimeMillis() > task.dueDate!!) ||
+        (task.dueDate == null && (System.currentTimeMillis() - task.timestamp > 24 * 60 * 60 * 1000))
+    )
+    val isDueSoon = !task.isCompleted && task.dueDate != null && !isOverdue && (task.dueDate!! - System.currentTimeMillis() < 24 * 60 * 60 * 1000)
     
     val priorityColor = when (task.priority) {
         0 -> Color(0xFF4CAF50)
@@ -2074,9 +2096,10 @@ fun TaskItem(
             .clip(RoundedCornerShape(16.dp))
             .background(if (task.isCompleted) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.background)
             .border(
-                width = if (task.priority == 2 || isOverdue) 2.dp else 1.dp,
+                width = if (task.priority == 2 || isOverdue || isDueSoon) 2.dp else 1.dp,
                 color = when {
                     isOverdue -> MaterialTheme.colorScheme.error
+                    isDueSoon -> Color(0xFFFFA000) // Orange warning for due soon
                     task.priority == 2 -> priorityColor
                     task.isCompleted -> MaterialTheme.colorScheme.outlineVariant
                     else -> Color.Transparent
@@ -2120,6 +2143,22 @@ fun TaskItem(
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.error
+                    )
+                } else if (isDueSoon) {
+                    Text(
+                        text = "DUE SOON",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFA000)
+                    )
+                }
+                
+                if (task.dueDate != null) {
+                    val sdf = java.text.SimpleDateFormat("MMM dd", java.util.Locale.getDefault())
+                    Text(
+                        text = sdf.format(java.util.Date(task.dueDate)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isOverdue) MaterialTheme.colorScheme.error else if (isDueSoon) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 
@@ -2215,7 +2254,7 @@ fun AddTaskDialog(
     customCategories: List<String> = emptyList(),
     onAddCustomCategory: (String) -> Unit = {},
     onDismiss: () -> Unit,
-    onAdd: (String, Int, String) -> Unit
+    onAdd: (String, Int, String, Long?) -> Unit
 ) {
     var text by remember { mutableStateOf("") }
     var priority by remember { mutableIntStateOf(1) } // 0 = Low, 1 = Med, 2 = High
@@ -2223,6 +2262,33 @@ fun AddTaskDialog(
     
     var showNewCategoryInput by remember { mutableStateOf(false) }
     var newCategoryText by remember { mutableStateOf("") }
+    
+    var dueDate by remember { mutableStateOf<Long?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState()
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        dueDate = datePickerState.selectedDateMillis
+                        showDatePicker = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2303,11 +2369,30 @@ fun AddTaskDialog(
                         }
                     }
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (dueDate != null) {
+                            val sdf = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
+                            "Due: " + sdf.format(java.util.Date(dueDate!!))
+                        } else {
+                            "No due date"
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    TextButton(onClick = { showDatePicker = true }) {
+                        Text(if (dueDate != null) "Change" else "Set Date")
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { if (text.isNotBlank()) onAdd(text, priority, category) }
+                onClick = { if (text.isNotBlank()) onAdd(text, priority, category, dueDate) }
             ) {
                 Text("Add")
             }
@@ -2737,6 +2822,34 @@ fun ChatDialog(
                         .background(MaterialTheme.colorScheme.surface)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
+                    var selectedTag by remember { mutableStateOf(com.example.utils.APIDiagnosticLogger.activeTag) }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Tag Session:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                        listOf("Personal", "Work", "Ideas").forEach { tag ->
+                            val isSelected = selectedTag == tag
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    selectedTag = tag
+                                    com.example.utils.APIDiagnosticLogger.activeTag = tag
+                                },
+                                label = { Text(tag) }
+                            )
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,

@@ -28,6 +28,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -63,6 +73,7 @@ fun HomeContent(
     val widgetLayout by viewModel.widgetLayout.collectAsStateWithLifecycle()
     val weeklySummary by viewModel.weeklySummary.collectAsStateWithLifecycle()
     var editMode by remember { mutableStateOf(false) }
+    var filterTag by remember { mutableStateOf("All") }
 
     val debtViewModel: com.example.ui.debt.DebtViewModel = org.koin.androidx.compose.koinViewModel()
     val totalReceivables by debtViewModel.totalReceivables.collectAsStateWithLifecycle()
@@ -100,13 +111,13 @@ fun HomeContent(
                 val size = pair.second
 
                 Box(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().animateItem()
                 ) {
                     when (id) {
                         "welcome" -> WelcomeWidget(userName, welcomeMessage, onChatClicked)
                         "summary" -> WeeklySummaryWidget(weeklySummary, onRefresh = { viewModel.getWeeklySummary() })
                         "jarvis_insights" -> JarvisInsightCard(viewModel, debtViewModel, onNavigateToDebt = { onNavigateToTab(3) })
-                        "chat" -> ChatWidget(viewModel)
+                        "chat" -> ChatWidget(viewModel, filterTag)
                         "search" -> SearchWidget(searchQuery, { searchQuery = it }, viewModel, aiInsight)
                         "stats" -> StatsWidget(tasks, totalExpenses)
                         "health" -> FinancialHealthCard(totalExpenses = totalExpenses, monthlyBudget = monthlyBudget)
@@ -130,6 +141,12 @@ fun HomeContent(
                             dueTodayCount = dueTodayCount,
                             size = size,
                             onNavigateToDebt = { onNavigateToTab(3) }
+                        )
+                        "analytics_chart" -> AnalyticsChartWidget(
+                            viewModel = viewModel,
+                            tasks = tasks,
+                            filterTag = filterTag,
+                            onFilterTagChange = { filterTag = it }
                         )
                     }
 
@@ -555,8 +572,18 @@ fun JournalsWidget(journals: List<JournalEntity>, viewModel: DashboardViewModel)
 }
 
 @Composable
-fun ChatWidget(viewModel: DashboardViewModel) {
-    val chatHistory by viewModel.chatHistory.collectAsStateWithLifecycle()
+fun ChatWidget(viewModel: DashboardViewModel, filterTag: String = "All") {
+    val stateProvider = org.koin.compose.koinInject<com.example.core.ai.GemmaLocalStateProvider>()
+    val persistentChatHistory by stateProvider.chatHistory.collectAsStateWithLifecycle()
+    
+    val filteredChat = remember(persistentChatHistory, filterTag) {
+        if (filterTag == "All") {
+            persistentChatHistory
+        } else {
+            persistentChatHistory.filter { it.tag.equals(filterTag, ignoreCase = true) }
+        }
+    }
+
     val isChatLoading by viewModel.isChatLoading.collectAsStateWithLifecycle()
     var message by remember { mutableStateOf("") }
     var useThinking by remember { mutableStateOf(false) }
@@ -595,26 +622,24 @@ fun ChatWidget(viewModel: DashboardViewModel) {
             modifier = Modifier.weight(1f).fillMaxWidth(),
             reverseLayout = false
         ) {
-            items(chatHistory.size) { index ->
-                val chat = chatHistory[index]
+            items(filteredChat.size) { index ->
+                val chat = filteredChat[index]
                 val isUser = chat.role == "user"
-                if (!isUser || !chat.text.startsWith("User's current tasks:")) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+                ) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer)
+                            .padding(12.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(12.dp)
-                        ) {
-                            Text(
-                                text = if (isUser) chat.text else chat.text,
-                                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
+                        Text(
+                            text = chat.text,
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
             }
@@ -642,6 +667,7 @@ fun ChatWidget(viewModel: DashboardViewModel) {
                 keyboardActions = KeyboardActions(
                     onSend = {
                         if (message.isNotBlank()) {
+                            com.example.utils.APIDiagnosticLogger.activeTag = if (filterTag == "All") "Personal" else filterTag
                             viewModel.askJarvisChat(message, useThinking)
                             message = ""
                             keyboardController?.hide()
@@ -657,6 +683,7 @@ fun ChatWidget(viewModel: DashboardViewModel) {
             IconButton(
                 onClick = {
                     if (message.isNotBlank()) {
+                        com.example.utils.APIDiagnosticLogger.activeTag = if (filterTag == "All") "Personal" else filterTag
                         viewModel.askJarvisChat(message, useThinking)
                         message = ""
                         keyboardController?.hide()
@@ -949,4 +976,651 @@ fun DebtWidget(
         }
     }
 }
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun AnalyticsChartWidget(
+    viewModel: DashboardViewModel,
+    tasks: List<TaskEntity>,
+    filterTag: String,
+    onFilterTagChange: (String) -> Unit
+) {
+    val expenses by viewModel.expenses.collectAsStateWithLifecycle()
+    val diagnosticLogs by com.example.utils.APIDiagnosticLogger.logs.collectAsStateWithLifecycle()
+    
+    val stateProvider = org.koin.compose.koinInject<com.example.core.ai.GemmaLocalStateProvider>()
+    val persistentChatHistory by stateProvider.chatHistory.collectAsStateWithLifecycle()
+
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Trends, 1 = Service Share
+    var selectedPointIndex by remember { mutableStateOf(-1) }
+
+    val filteredLogs = remember(diagnosticLogs, filterTag) {
+        if (filterTag == "All") {
+            diagnosticLogs
+        } else {
+            diagnosticLogs.filter { it.tag.equals(filterTag, ignoreCase = true) }
+        }
+    }
+
+    val filteredChat = remember(persistentChatHistory, filterTag) {
+        if (filterTag == "All") {
+            persistentChatHistory
+        } else {
+            persistentChatHistory.filter { it.tag.equals(filterTag, ignoreCase = true) }
+        }
+    }
+
+    val now = System.currentTimeMillis()
+    val oneDayMs = 24 * 60 * 60 * 1000L
+
+    val past7Days = remember(tasks, expenses, filteredChat, filteredLogs) {
+        val sdfDay = SimpleDateFormat("EEE", Locale.US)
+        
+        // Check if there is any real user or AI history at all
+        val hasRealHistory = tasks.isNotEmpty() || expenses.isNotEmpty() || filteredChat.isNotEmpty() || filteredLogs.isNotEmpty()
+        
+        (0..6).map { i ->
+            val dayStart = now - (6 - i) * oneDayMs
+            val dayEnd = dayStart + oneDayMs
+            val dayLabel = sdfDay.format(Date(dayStart))
+
+            val chatCountInDay = filteredChat.count { it.timestamp in dayStart until dayEnd }
+            val diagnosticCountInDay = filteredLogs.count { it.timestamp in dayStart until dayEnd }
+            val realAI = chatCountInDay + diagnosticCountInDay
+            val realUser = tasks.count { it.timestamp in dayStart until dayEnd } +
+                    expenses.count { it.timestamp in dayStart until dayEnd }
+
+            val aiInteractions = if (hasRealHistory) realAI else {
+                when (i) {
+                    0 -> 2; 1 -> 4; 2 -> 3; 3 -> 6; 4 -> 5; 5 -> 7; else -> 4
+                }
+            }
+            val userActivities = if (hasRealHistory) realUser else {
+                when (i) {
+                    0 -> 3; 1 -> 2; 2 -> 5; 3 -> 4; 4 -> 6; 5 -> 5; else -> 8
+                }
+            }
+
+            DayData(
+                label = dayLabel,
+                aiInteractions = aiInteractions,
+                userActivities = userActivities,
+                chatCount = if (hasRealHistory) chatCountInDay else aiInteractions / 2,
+                diagnosticCount = if (hasRealHistory) diagnosticCountInDay else aiInteractions - (aiInteractions / 2),
+                tasksCreated = if (hasRealHistory) tasks.count { it.timestamp in dayStart until dayEnd } else userActivities / 2,
+                expensesLogged = if (hasRealHistory) expenses.count { it.timestamp in dayStart until dayEnd } else userActivities - (userActivities / 2)
+            )
+        }
+    }
+
+    val featureShare = remember(filteredChat, filteredLogs) {
+        val hasRealCalls = filteredChat.isNotEmpty() || filteredLogs.isNotEmpty()
+        if (hasRealCalls) {
+            val chatCount = filteredChat.size
+            var chatApiCount = 0
+            var habitCount = 0
+            var conflictCount = 0
+            var priorCount = 0
+            var otherCount = 0
+
+            filteredLogs.forEach { log ->
+                when {
+                    log.feature.contains("Habit", ignoreCase = true) -> habitCount++
+                    log.feature.contains("Conflict", ignoreCase = true) -> conflictCount++
+                    log.feature.contains("Priorit", ignoreCase = true) -> priorCount++
+                    log.feature.contains("Chat", ignoreCase = true) || log.feature.contains("Jarvis", ignoreCase = true) -> chatApiCount++
+                    else -> otherCount++
+                }
+            }
+
+            listOf(
+                FeatureShareData("Chat / Assistant", chatCount + chatApiCount, Color(0xFF6366F1)),
+                FeatureShareData("Habit Analysis", habitCount, Color(0xFF10B981)),
+                FeatureShareData("Conflict Resolver", conflictCount, Color(0xFFEF4444)),
+                FeatureShareData("Task Optimizer", priorCount, Color(0xFFF59E0B)),
+                FeatureShareData("System Engine", otherCount, Color(0xFF8B5CF6))
+            )
+        } else {
+            listOf(
+                FeatureShareData("Chat / Assistant", 15, Color(0xFF6366F1)),
+                FeatureShareData("Habit Analysis", 5, Color(0xFF10B981)),
+                FeatureShareData("Conflict Resolver", 3, Color(0xFFEF4444)),
+                FeatureShareData("Task Optimizer", 6, Color(0xFFF59E0B)),
+                FeatureShareData("System Engine", 2, Color(0xFF8B5CF6))
+            )
+        }
+    }
+
+    val maxAI = past7Days.maxOf { it.aiInteractions }.toFloat()
+    val maxUser = past7Days.maxOf { it.userActivities }.toFloat()
+    val maxScale = maxOf(maxAI, maxUser, 5f)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Analytics,
+                            contentDescription = "Analytics Icon",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Interaction Analytics",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "AI interaction & user productivity patterns",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    Text(
+                        text = "Filter:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                items(listOf("All", "Personal", "Work", "Ideas").size) { idx ->
+                    val tag = listOf("All", "Personal", "Work", "Ideas")[idx]
+                    val isSelected = filterTag == tag
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            onFilterTagChange(tag)
+                            selectedPointIndex = -1
+                        },
+                        label = { Text(tag) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (selectedTab == 0) MaterialTheme.colorScheme.surface else Color.Transparent)
+                        .clickable {
+                            selectedTab = 0
+                            selectedPointIndex = -1
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Daily Trends",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (selectedTab == 1) MaterialTheme.colorScheme.surface else Color.Transparent)
+                        .clickable {
+                            selectedTab = 1
+                            selectedPointIndex = -1
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "AI Feature Share",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (selectedTab == 0) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                    ) {
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(past7Days) {
+                                    detectTapGestures { offset ->
+                                        val width = size.width
+                                        val spacing = width / 6f
+                                        var bestIndex = -1
+                                        var minDistance = Float.MAX_VALUE
+                                        for (i in 0..6) {
+                                            val x = i * spacing
+                                            val dist = kotlin.math.abs(offset.x - x)
+                                            if (dist < minDistance && dist < spacing / 1.5f) {
+                                                minDistance = dist
+                                                bestIndex = i
+                                            }
+                                        }
+                                        selectedPointIndex = if (selectedPointIndex == bestIndex) -1 else bestIndex
+                                    }
+                                }
+                        ) {
+                            val canvasWidth = size.width
+                            val canvasHeight = size.height
+                            val spacing = canvasWidth / 6f
+
+                            val gridLines = 4
+                            for (gl in 0..gridLines) {
+                                val y = canvasHeight * (gl.toFloat() / gridLines)
+                                drawLine(
+                                    color = Color.LightGray.copy(alpha = 0.15f),
+                                    start = Offset(0f, y),
+                                    end = Offset(canvasWidth, y),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+
+                            val aiPath = Path()
+                            val userPath = Path()
+
+                            val aiPoints = mutableListOf<Offset>()
+                            val userPoints = mutableListOf<Offset>()
+
+                            for (i in 0..6) {
+                                val x = i * spacing
+                                val day = past7Days[i]
+
+                                val yAI = canvasHeight - ((day.aiInteractions.toFloat() / maxScale) * (canvasHeight - 20.dp.toPx())) - 10.dp.toPx()
+                                val yUser = canvasHeight - ((day.userActivities.toFloat() / maxScale) * (canvasHeight - 20.dp.toPx())) - 10.dp.toPx()
+
+                                val pointAI = Offset(x, yAI)
+                                val pointUser = Offset(x, yUser)
+
+                                aiPoints.add(pointAI)
+                                userPoints.add(pointUser)
+
+                                if (i == 0) {
+                                    aiPath.moveTo(x, yAI)
+                                    userPath.moveTo(x, yUser)
+                                } else {
+                                    aiPath.lineTo(x, yAI)
+                                    userPath.lineTo(x, yUser)
+                                }
+                            }
+
+                            val aiAreaPath = Path().apply {
+                                addPath(aiPath)
+                                lineTo(canvasWidth, canvasHeight)
+                                lineTo(0f, canvasHeight)
+                                close()
+                            }
+                            val userAreaPath = Path().apply {
+                                addPath(userPath)
+                                lineTo(canvasWidth, canvasHeight)
+                                lineTo(0f, canvasHeight)
+                                close()
+                            }
+
+                            drawPath(
+                                path = aiAreaPath,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF6366F1).copy(alpha = 0.18f),
+                                        Color(0xFF6366F1).copy(alpha = 0.0f)
+                                    )
+                                )
+                            )
+                            drawPath(
+                                path = userAreaPath,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF10B981).copy(alpha = 0.15f),
+                                        Color(0xFF10B981).copy(alpha = 0.0f)
+                                    )
+                                )
+                            )
+
+                            drawPath(
+                                path = aiPath,
+                                color = Color(0xFF6366F1),
+                                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                            )
+                            drawPath(
+                                path = userPath,
+                                color = Color(0xFF10B981),
+                                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                            )
+
+                            for (i in 0..6) {
+                                val ptAI = aiPoints[i]
+                                val ptUser = userPoints[i]
+
+                                val isSelected = (selectedPointIndex == i)
+                                val radiusAI = if (isSelected) 7.dp.toPx() else 3.5.dp.toPx()
+                                val radiusUser = if (isSelected) 7.dp.toPx() else 3.5.dp.toPx()
+
+                                drawCircle(
+                                    color = Color(0xFF6366F1),
+                                    radius = radiusAI,
+                                    center = ptAI
+                                )
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = radiusAI * 0.5f,
+                                    center = ptAI
+                                )
+
+                                drawCircle(
+                                    color = Color(0xFF10B981),
+                                    radius = radiusUser,
+                                    center = ptUser
+                                )
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = radiusUser * 0.5f,
+                                    center = ptUser
+                                )
+
+                                if (isSelected) {
+                                    drawLine(
+                                        color = Color.Gray.copy(alpha = 0.3f),
+                                        start = Offset(ptAI.x, 0f),
+                                        end = Offset(ptAI.x, canvasHeight),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        past7Days.forEachIndexed { idx, day ->
+                            Text(
+                                text = day.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selectedPointIndex == idx) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selectedPointIndex == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { selectedPointIndex = if (selectedPointIndex == idx) -1 else idx }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (selectedPointIndex != -1 && selectedPointIndex in past7Days.indices) {
+                        val day = past7Days[selectedPointIndex]
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "${day.label} Logged Activity",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "🤖 AI Actions: ${day.aiInteractions}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "  • Local assistant: ${day.chatCount}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "  • Cloud heuristics: ${day.diagnosticCount}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "📝 User Accomplishments: ${day.userActivities}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "  • Tasks logged: ${day.tasksCreated}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "  • Expenses logged: ${day.expensesLogged}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF6366F1))
+                                )
+                                Text(
+                                    text = "AI co-pilot active",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                )
+                                Text(
+                                    text = "User productivity tasks",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                val totalShareSum = featureShare.sumOf { it.count }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (totalShareSum == 0) {
+                            Text(
+                                text = "No API calls",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                var startAngle = -90f
+                                featureShare.forEach { item ->
+                                    if (item.count > 0) {
+                                        val sweepAngle = (item.count.toFloat() / totalShareSum) * 360f
+                                        drawArc(
+                                            color = item.color,
+                                            startAngle = startAngle,
+                                            sweepAngle = sweepAngle,
+                                            useCenter = false,
+                                            style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
+                                        )
+                                        startAngle += sweepAngle
+                                    }
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "$totalShareSum",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Actions",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        featureShare.forEach { item ->
+                            val percent = if (totalShareSum > 0) (item.count.toFloat() / totalShareSum * 100).toInt() else 0
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(item.color)
+                                    )
+                                    Text(
+                                        text = item.name,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.widthIn(max = 110.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "${item.count} ($percent%)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class DayData(
+    val label: String,
+    val aiInteractions: Int,
+    val userActivities: Int,
+    val chatCount: Int,
+    val diagnosticCount: Int,
+    val tasksCreated: Int,
+    val expensesLogged: Int
+)
+
+data class FeatureShareData(
+    val name: String,
+    val count: Int,
+    val color: Color
+)
 

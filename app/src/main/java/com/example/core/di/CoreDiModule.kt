@@ -83,7 +83,7 @@ val coreDiModule = module {
     single { com.example.utils.FinancePreferences(androidContext()) }
 
     viewModel { com.example.feature.dashboard.presentation.DashboardViewModel(
-        get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()
+        get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()
     ) }
     
     viewModel { com.example.ui.debt.DebtViewModel(get(), get(), get()) }

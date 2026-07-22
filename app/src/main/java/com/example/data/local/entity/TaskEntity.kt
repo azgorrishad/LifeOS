@@ -13,5 +13,6 @@ data class TaskEntity(
     val isCompleted: Boolean = false,
     val priority: Int = 0, // 0 = Low, 1 = Med, 2 = High
     val category: String = "Personal",
+    val dueDate: Long? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
